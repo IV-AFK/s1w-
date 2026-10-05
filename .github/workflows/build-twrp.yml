@@ -123,6 +123,41 @@ jobs:
           grep -n 'twrp_H100.mk'    "$DT/AndroidProducts.mk"
           ls -l "$DT"
 
+      # AOSP 9's build tools are Python 2. build/make/tools/
+      # check_radio_versions.py, which android-info.txt generation calls, uses
+      # `print "..."`. Ubuntu 22.04 ships Python 3 as /usr/bin/python, so the
+      # first such tool the build reaches dies with
+      #   SyntaxError: Missing parentheses in call to 'print'
+      # Prefer a real python2. If the archive no longer carries one, convert
+      # the py2 build tools in place instead - that is enough because only a
+      # handful of them are ever invoked during a recovery build.
+      - name: Provide python 2
+        run: |
+          cd "$HOME/twrp"
+
+          sudo apt-get install -y -qq python2 \
+            || sudo apt-get install -y -qq python2.7 \
+            || true
+
+          if python --version 2>&1 | grep -q 'Python 2'; then
+            echo "python already resolves to Python 2"
+            python --version 2>&1
+            exit 0
+          fi
+
+          for cand in python2 python2.7; do
+            if command -v "$cand" >/dev/null 2>&1; then
+              echo "pointing python at $cand"
+              sudo ln -sf "$(command -v "$cand")" /usr/local/bin/python
+              python --version 2>&1
+              exit 0
+            fi
+          done
+
+          echo "no python2 available - converting the py2 build tools in place"
+          python3 -m lib2to3 -w -n build/make/tools >/dev/null 2>&1 || true
+          python --version 2>&1 || true
+
       - name: Build recoveryimage
         run: |
           cd "$HOME/twrp"
@@ -131,7 +166,8 @@ jobs:
           export _JAVA_OPTIONS="-Xmx4g"
           source build/envsetup.sh
           lunch twrp_H100-eng
-          mka recoveryimage -j"$(nproc)"
+          set -o pipefail
+          mka recoveryimage -j"$(nproc)" 2>&1 | tee out/build.log
           ls -l out/target/product/H100/recovery.img
 
       - uses: actions/upload-artifact@v4
@@ -146,6 +182,7 @@ jobs:
         with:
           name: build-log
           path: |
+            ~/twrp/out/build.log
             ~/twrp/out/error.log
             ~/twrp/out/verbose.log.gz
             ~/twrp/out/*.log
