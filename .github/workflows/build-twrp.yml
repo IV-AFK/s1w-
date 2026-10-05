@@ -64,6 +64,25 @@ jobs:
             x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
             libxml2-utils xsltproc unzip fontconfig python3 openjdk-8-jdk
 
+          # Android 9's prebuilt clang (clang-4691093) is linked against
+          # ncurses 5. Ubuntu 22.04 ships ncurses 6, so the very first compile
+          # dies with:
+          #   clang.real: error while loading shared libraries: libtinfo.so.5
+          # It is not a device tree problem - ninja gets to [0% 70/14744] and
+          # stops there. Install the compat packages, and if the archive no
+          # longer carries them, point .so.5 at the .so.6 that does exist.
+          sudo apt-get install -y -qq libtinfo5 libncurses5 || true
+          for lib in libtinfo libncurses; do
+            if [ ! -e "/usr/lib/x86_64-linux-gnu/$lib.so.5" ]; then
+              real=$(ldconfig -p | awk -v n="$lib.so.6" '$1 == n { print $NF; exit }')
+              if [ -n "$real" ]; then
+                echo "no $lib.so.5 packaged - linking it to $real"
+                sudo ln -sf "$real" "/usr/lib/x86_64-linux-gnu/$lib.so.5"
+              fi
+            fi
+          done
+          ldconfig -p | grep -E 'lib(tinfo|ncurses)\.so\.' || true
+
       - name: repo init + sync
         run: |
           mkdir -p ~/bin
