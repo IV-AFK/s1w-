@@ -1,18 +1,18 @@
 name: Build TWRP for EEBBK S1W (H100)
- 
+
 on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
- 
+
 jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 350
- 
+
     steps:
       - uses: actions/checkout@v4
- 
+
       # Runs before anything expensive. A missing device tree used to surface
       # only after a ~40 minute repo sync; now it fails in seconds and prints
       # what the repo actually contains. The tree is located by its signature
@@ -37,6 +37,7 @@ jobs:
             echo "uploaded as a file (web upload allows 25 MB per file)."
             exit 1
           fi
+
       # The stock runner has ~14 GB free. A TWRP 9.0 tree needs far more, so we
       # reclaim the preinstalled SDKs/toolchains we will never use (~40 GB).
       - name: Free disk space
@@ -53,6 +54,7 @@ jobs:
           sudo apt-get clean
           docker image prune -af || true
           df -h /
+
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
@@ -61,6 +63,7 @@ jobs:
             gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
             x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
             libxml2-utils xsltproc unzip fontconfig python3 openjdk-8-jdk
+
       - name: repo init + sync
         run: |
           mkdir -p ~/bin
@@ -73,11 +76,34 @@ jobs:
           repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git -b twrp-9.0
           repo sync -j"$(nproc)" --force-sync --no-clone-bundle
           df -h /
+
       - name: Install device tree
         run: |
+          set -e
           mkdir -p "$HOME/twrp/device/eebbk"
           cp -r "$DEVICE_TREE" "$HOME/twrp/device/eebbk/H100"
-          ls -l "$HOME/twrp/device/eebbk/H100"
+          DT="$HOME/twrp/device/eebbk/H100"
+
+          # Two fixes the checked-in tree still needs. Patching them here means
+          # the build does not depend on the repo being corrected first. Both
+          # are idempotent, so running them against an already-fixed tree is a
+          # no-op.
+          #
+          #  1. There is no vendor/twrp in the twrp-9.0 manifest; the TWRP
+          #     source tree it ships is vendor/omni.
+          #  2. AndroidProducts.mk has to use $(LOCAL_DIR). $(call my-dir) is not
+          #     defined yet when build/make/core/product_config.mk reads that
+          #     file, so LOCAL_PATH expands to nothing, PRODUCT_MAKEFILES points
+          #     at a path that does not exist, and lunch fails with
+          #     "Can not locate config makefile for product".
+          sed -i 's|vendor/twrp/config/common.mk|vendor/omni/config/common.mk|' "$DT/twrp_H100.mk"
+          sed -i 's|\$(LOCAL_PATH)/twrp_H100.mk|$(LOCAL_DIR)/twrp_H100.mk|'   "$DT/AndroidProducts.mk"
+
+          echo "--- effective product config ---"
+          grep -n 'inherit-product' "$DT/twrp_H100.mk"
+          grep -n 'twrp_H100.mk'    "$DT/AndroidProducts.mk"
+          ls -l "$DT"
+
       - name: Build recoveryimage
         run: |
           cd "$HOME/twrp"
@@ -88,12 +114,13 @@ jobs:
           lunch twrp_H100-eng
           mka recoveryimage -j"$(nproc)"
           ls -l out/target/product/H100/recovery.img
+
       - uses: actions/upload-artifact@v4
         with:
           name: twrp-H100-recovery
           path: ~/twrp/out/target/product/H100/recovery.img
           if-no-files-found: error
- 
+
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -103,3 +130,4 @@ jobs:
             ~/twrp/out/error.log
             ~/twrp/out/verbose.log.gz
             ~/twrp/out/*.log
+          if-no-files-found: ignore
