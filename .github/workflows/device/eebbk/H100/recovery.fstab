@@ -1,0 +1,42 @@
+#
+# TWRP fstab for EEBBK S1W (H100)  -- Unisoc T310, system-as-root
+# format: <mount point> <fstype> <device> [flags]
+# devices derived from the stock /etc/recovery.fstab of the vendor recovery.
+#
+# NOTE: device paths are spelled out in full. TWRP does not expand variables --
+# the vendor fstab's $(BLK) syntax is an init feature, not a TWRP one -- so a
+# literal path is the only thing that actually mounts.
+#
+
+# bootloader / firmware (raw emmc)
+/spl            emmc    /dev/block/mmcblk0boot0
+/spl_bk         emmc    /dev/block/mmcblk0boot1
+/uboot          emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/uboot
+/uboot_bak      emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/uboot_bak
+/sml            emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/sml
+/sml_bak        emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/sml_bak
+/tos            emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/trustos
+/tos_bak        emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/trustos_bak
+/vbmeta         emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/vbmeta
+/vbmeta_bak     emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/vbmeta_bak
+/dtb            emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/dtb
+/dtbo           emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/dtbo
+
+# partitions TWRP manipulates
+/misc           emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/misc
+/boot           emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/boot          flags=backup=1;flashimg=1
+/recovery       emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/recovery      flags=backup=1;flashimg=1
+
+# filesystems
+/system_root    ext4    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/system        flags=display="System";backup=1;slotselect=0
+/vendor         ext4    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/vendor        flags=display="Vendor";backup=1
+/product        ext4    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/product       flags=display="Product";backup=1
+/persist        ext4    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/persist       flags=display="Persist";backup=1
+/mnt/vendor     ext4    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/prodnv        flags=display="prodnv";backup=1
+/cache          ext4    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/cache         flags=display="Cache"
+/data           ext4    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/userdata      flags=display="Data";encryptable=ice
+/logo           emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/logo          flags=backup=1
+/fbootlogo      emmc    /dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/fbootlogo
+
+# external microSD (second SDIO controller)
+/storage/sdcard0  auto  /dev/block/platform/soc/soc:ap-apb/71100000.sdio/mmcblk1p1  flags=display="MicroSD";storage;wipeingui;removable
