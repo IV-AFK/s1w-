@@ -13,6 +13,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
  
+      # Runs before anything expensive. A missing device tree used to surface
+      # only after a ~40 minute repo sync; now it fails in seconds and prints
+      # what the repo actually contains. The tree is located by its signature
+      # file, so it does not matter how deep the upload nested it.
+      - name: Locate device tree
+        run: |
+          set -e
+          MK=$(find "$GITHUB_WORKSPACE" -name twrp_H100.mk -not -path '*/.git/*' | head -n1)
+          if [ -z "$MK" ]; then
+            echo "::error::twrp_H100.mk not found - the device tree is not in this repo."
+            echo "--- what the repo actually contains ---"
+            find "$GITHUB_WORKSPACE" -not -path '*/.git/*' -not -name .git | sort | head -n 200
+            exit 1
+          fi
+          SRC=$(dirname "$MK")
+          echo "device tree found at: $SRC"
+          echo "DEVICE_TREE=$SRC" >> "$GITHUB_ENV"
+          ls -l "$SRC"
+          if [ ! -f "$SRC/prebuilt/Image" ]; then
+            echo "::error::$SRC/prebuilt/Image is missing."
+            echo "It is 17 MB, so it cannot be pasted as text - it has to be"
+            echo "uploaded as a file (web upload allows 25 MB per file)."
+            exit 1
+          fi
       # The stock runner has ~14 GB free. A TWRP 9.0 tree needs far more, so we
       # reclaim the preinstalled SDKs/toolchains we will never use (~40 GB).
       - name: Free disk space
@@ -52,7 +76,7 @@ jobs:
       - name: Install device tree
         run: |
           mkdir -p "$HOME/twrp/device/eebbk"
-          cp -r device/eebbk/H100 "$HOME/twrp/device/eebbk/H100"
+          cp -r "$DEVICE_TREE" "$HOME/twrp/device/eebbk/H100"
           ls -l "$HOME/twrp/device/eebbk/H100"
       - name: Build recoveryimage
         run: |
@@ -75,4 +99,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: ~/twrp/out/*.log
+          path: |
+            ~/twrp/out/error.log
+            ~/twrp/out/verbose.log.gz
+            ~/twrp/out/*.log
