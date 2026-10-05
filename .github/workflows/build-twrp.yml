@@ -1,0 +1,78 @@
+name: Build TWRP for EEBBK S1W (H100)
+ 
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+ 
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+ 
+    steps:
+      - uses: actions/checkout@v4
+ 
+      # The stock runner has ~14 GB free. A TWRP 9.0 tree needs far more, so we
+      # reclaim the preinstalled SDKs/toolchains we will never use (~40 GB).
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android \
+                      /usr/share/dotnet \
+                      /opt/ghc \
+                      /usr/local/share/boost \
+                      "$AGENT_TOOLSDIRECTORY" \
+                      /opt/hostedtoolcache \
+                      /usr/local/lib/node_modules \
+                      /usr/share/swift
+          sudo apt-get clean
+          docker image prune -af || true
+          df -h /
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            git-core gnupg flex bison build-essential zip curl zlib1g-dev \
+            gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
+            x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
+            libxml2-utils xsltproc unzip fontconfig python3 openjdk-8-jdk
+      - name: repo init + sync
+        run: |
+          mkdir -p ~/bin
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod +x ~/bin/repo
+          export PATH="$HOME/bin:$PATH"
+          mkdir -p "$HOME/twrp" && cd "$HOME/twrp"
+          git config --global user.name  "ci"
+          git config --global user.email "ci@localhost"
+          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git -b twrp-9.0
+          repo sync -j"$(nproc)" --force-sync --no-clone-bundle
+          df -h /
+      - name: Install device tree
+        run: |
+          mkdir -p "$HOME/twrp/device/eebbk"
+          cp -r device/eebbk/H100 "$HOME/twrp/device/eebbk/H100"
+          ls -l "$HOME/twrp/device/eebbk/H100"
+      - name: Build recoveryimage
+        run: |
+          cd "$HOME/twrp"
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export LC_ALL=C
+          export _JAVA_OPTIONS="-Xmx4g"
+          source build/envsetup.sh
+          lunch twrp_H100-eng
+          mka recoveryimage -j"$(nproc)"
+          ls -l out/target/product/H100/recovery.img
+      - uses: actions/upload-artifact@v4
+        with:
+          name: twrp-H100-recovery
+          path: ~/twrp/out/target/product/H100/recovery.img
+          if-no-files-found: error
+ 
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ~/twrp/out/*.log
